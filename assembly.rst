@@ -8,37 +8,27 @@
 
 译者注：登链社区有一篇译文 `Solidity 中编写内联汇编(assembly)的那些事 <https://learnblockchain.cn/article/675>`_  推荐阅读。
 
-You can interleave Solidity statements with inline assembly in a language close
-to the one of the Ethereum Virtual Machine. This gives you more fine-grained control,
-which is especially useful when you are enhancing the language by writing libraries.
 
-The language used for inline assembly in Solidity is called :ref:`Yul <yul>`
-and it is documented in its own section. This section will only cover
-how the inline assembly code can interface with the surrounding Solidity code.
+你可以使用一种接近以太坊虚拟机语言的语言将 Solidity 语句与内联汇编交织在一起。这给你更细粒度的控制，在你通过编写库来增强语言时特别有用。
+Solidity 中用于内联汇编的语言称为 :ref:`Yul <yul>`，它在其自己的章节中有记录。本节将仅介绍内联汇编代码如何与包围着的 Solidity 代码交互。
 
 
-.. warning::
-    Inline assembly is a way to access the Ethereum Virtual Machine
-    at a low level. This bypasses several important safety
-    features and checks of Solidity. You should only use it for
-    tasks that need it, and only if you are confident with using it.
+.. 提示::
+    内联汇编是一种在低级别访问以太坊虚拟机的方法。这绕过了几个重要的安全特性和 Solidity 检查。
+    你应该只将它用于需要它的任务，并且需要有足够信心用好它们；
 
 
-An inline assembly block is marked by ``assembly { ... }``, where the code inside
-the curly braces is code in the :ref:`Yul <yul>` language.
+内联汇编块由 ``assembly { ... }`` 标记，其中大括号内的代码是 :ref:`Yul <yul>` 语言的代码。
 
-The inline assembly code can access local Solidity variables as explained below.
+内联汇编代码可以访问本地 Solidity 变量，如下所述。
 
-Different inline assembly blocks share no namespace, i.e. it is not possible
-to call a Yul function or access a Yul variable defined in a different inline assembly block.
+不同的内联汇编块不共享命名空间，即不可能调用 Yul 函数或访问在不同的内联汇编块中定义的 Yul 变量。
 
 Example
 -------
 
-The following example provides library code to access the code of another contract and
-load it into a ``bytes`` variable. This is possible with "plain Solidity" too, by using
-``<address>.code``. But the point here is that reusable assembly libraries can enhance the
-Solidity language without a compiler change.
+以下示例提供了库代码来访问另一个合约的代码并将其加载到“bytes”变量中。通过使用 ``<address>.code``，这对于“原生 Solidity”也是可能的。
+但这里的要点是，可重用的汇编库可以在不更改编译器的情况下增强 Solidity 语言。
 
 .. code-block:: solidity
 
@@ -48,23 +38,22 @@ Solidity language without a compiler change.
     library GetCode {
         function at(address addr) public view returns (bytes memory code) {
             assembly {
-                // retrieve the size of the code, this needs assembly
+                // 获取代码的大小，这需要使用汇编
                 let size := extcodesize(addr)
-                // allocate output byte array - this could also be done without assembly
+                // 分配输出字节数组——这也可以在没有汇编的情况下完成
                 // by using code = new bytes(size)
                 code := mload(0x40)
-                // new "memory end" including padding
+                //新的“memory end”，包括填充
                 mstore(0x40, add(code, and(add(add(size, 0x20), 0x1f), not(0x1f))))
-                // store length in memory
+                // 在内存中存储长度
                 mstore(code, size)
-                // actually retrieve the code, this needs assembly
+                // 真正获取代码的大小，这需要使用汇编
                 extcodecopy(addr, add(code, 0x20), 0, size)
             }
         }
     }
 
-Inline assembly is also beneficial in cases where the optimizer fails to produce
-efficient code, for example:
+在优化器无法生成高效代码的情况下，内联汇编也很有用，例如:
 
 .. code-block:: solidity
 
@@ -73,16 +62,14 @@ efficient code, for example:
 
 
     library VectorSum {
-        // This function is less efficient because the optimizer currently fails to
-        // remove the bounds checks in array access.
+        // 此函数效率较低，因为优化器当前无法删除数组访问中的边界检查.
         function sumSolidity(uint[] memory data) public pure returns (uint sum) {
             for (uint i = 0; i < data.length; ++i)
                 sum += data[i];
         }
 
-        // We know that we only access the array in bounds, so we can avoid the check.
-        // 0x20 needs to be added to an array because the first slot contains the
-        // array length.
+        // 我们知道我们只在边界内访问数组，所以我们可以避免检查.
+        // 0x20 需要添加到数组中，因为第一个槽包含数组长度。
         function sumAsm(uint[] memory data) public pure returns (uint sum) {
             for (uint i = 0; i < data.length; ++i) {
                 assembly {
@@ -91,21 +78,20 @@ efficient code, for example:
             }
         }
 
-        // Same as above, but accomplish the entire code within inline assembly.
+        // 与上面相同，但在内联汇编中完成整个代码。
         function sumPureAsm(uint[] memory data) public pure returns (uint sum) {
             assembly {
-                // Load the length (first 32 bytes)
+                //加载长度（前 32 个字节）
                 let len := mload(data)
 
-                // Skip over the length field.
+                // 跳过长度字段.
                 //
-                // Keep temporary variable so it can be incremented in place.
+                // 保留临时变量，以便它可以就地递增。
                 //
-                // NOTE: incrementing data would result in an unusable
-                //       data variable after this assembly block
+                // 注意：递增数据将导致此汇编块后的数据变量不可用
                 let dataElementLocation := add(data, 0x20)
 
-                // Iterate until the bound is not met.
+                // 迭代直到不满足边界.
                 for
                     { let end := add(dataElementLocation, mul(len, 0x20)) }
                     lt(dataElementLocation, end)
@@ -119,28 +105,22 @@ efficient code, for example:
 
 .. index:: selector; of a function
 
-Access to External Variables, Functions and Libraries
+访问外部变量、函数和库
 -----------------------------------------------------
 
-You can access Solidity variables and other identifiers by using their name.
+你可以使用它们的名称访问 Solidity 变量和其他标识符。
 
-Local variables of value type are directly usable in inline assembly.
-They can both be read and assigned to.
+值类型的局部变量可直接在内联汇编中使用,它们都可以被读取和赋值。
 
-Local variables that refer to memory evaluate to the address of the variable in memory, not the value itself.
-Such variables can also be assigned to, but note that an assignment will only change the pointer and not the data
-and that it is your responsibility to respect Solidity's memory management.
-See :ref:`Conventions in Solidity <conventions-in-solidity>`.
+引用内存的局部变量计算为变量在内存中的地址，而不是值本身。此类变量也可以赋值，但请注意，
+赋值只会更改指针而不是数据，（你有责任遵守 Solidity 的内存管理机制）；
+See :ref:`Solidity 中的约定 <conventions-in-solidity>`.
 
-Similarly, local variables that refer to statically-sized calldata arrays or calldata structs
-evaluate to the address of the variable in calldata, not the value itself.
-The variable can also be assigned a new offset, but note that no validation is performed to ensure that
-the variable will not point beyond ``calldatasize()``.
+类似地，引用静态大小的 calldata 数组或 calldata 结构的局部变量计算为 calldata 中变量的地址，而不是值本身。
+也可以为变量分配一个新的偏移量，但要注意没有执行任何验证以确保变量不会指向超出 ``calldatasize()``.
 
-For external function pointers the address and the function selector can be
-accessed using ``x.address`` and ``x.selector``.
-The selector consists of four right-aligned bytes.
-Both values can be assigned to. For example:
+对于外部函数指针，可以使用访问地址和函数选择器的`x.address`` 和 ``x.selector``.
+选择器由四个右对齐字节组成，这两个值都可以分配。例如:
 
 .. code-block:: solidity
     :force:
@@ -149,7 +129,7 @@ Both values can be assigned to. For example:
     pragma solidity >=0.8.10 <0.9.0;
 
     contract C {
-        // Assigns a new selector and address to the return variable @fun
+        // 为返回变量分配一个新的选择器和地址
         function combineToFunctionPointer(address newAddress, uint newSelector) public pure returns (function() external fun) {
             assembly {
                 fun.selector := newSelector
@@ -158,24 +138,19 @@ Both values can be assigned to. For example:
         }
     }
 
-For dynamic calldata arrays, you can access
-their calldata offset (in bytes) and length (number of elements) using ``x.offset`` and ``x.length``.
-Both expressions can also be assigned to, but as for the static case, no validation will be performed
-to ensure that the resulting data area is within the bounds of ``calldatasize()``.
+对于动态 calldata 数组，您可以使用访问它们的 calldata 偏移量（以字节为单位）和长度（元素数）``x.offset`` 和 ``x.length``.
+这两个表达式都可以被赋值, 但由于静态原因, 不会执行任何验证以确保生成的数据区域在 ``calldatasize()``的边界内.
 
-For local storage variables or state variables, a single Yul identifier
-is not sufficient, since they do not necessarily occupy a single full storage slot.
-Therefore, their "address" is composed of a slot and a byte-offset
-inside that slot. To retrieve the slot pointed to by the variable ``x``, you
-use ``x.slot``, and to retrieve the byte-offset you use ``x.offset``.
-Using ``x`` itself will result in an error.
+对于本地存储变量或状态变量,单个 Yul 标识符是不够的, 因为它们不一定占用一个完整的存储槽.
+因此，它们的“地址”由一个插槽和该插槽内的字节偏移量组成. 为了获取``x``变量指向的槽，使用``x.slot``即可，
+为了获取字节偏移量，使用 ``x.offset``.
+使用 ``x`` 本身会导致错误.
 
-You can also assign to the ``.slot`` part of a local storage variable pointer.
-For these (structs, arrays or mappings), the ``.offset`` part is always zero.
-It is not possible to assign to the ``.slot`` or ``.offset`` part of a state variable,
-though.
+你还可以分配给本地存储变量指针的 ``.slot`` 部分.
+对于这些（结构、数组或映射），``.offset`` 部分始终为零.
+但是不能给状态变量的 ``.slot`` 或 ``.offset`` 赋值.
 
-Local Solidity variables are available for assignments, for example:
+本地 Solidity 变量可用于赋值，例如:
 
 .. code-block:: solidity
     :force:
@@ -187,75 +162,58 @@ Local Solidity variables are available for assignments, for example:
         uint b;
         function f(uint x) public view returns (uint r) {
             assembly {
-                // We ignore the storage slot offset, we know it is zero
-                // in this special case.
+                // 我们忽略存储槽偏移量，我们知道在这种特殊情况下它是零。
                 r := mul(x, sload(b.slot))
             }
         }
     }
 
-.. warning::
-    If you access variables of a type that spans less than 256 bits
-    (for example ``uint64``, ``address``, or ``bytes16``),
-    you cannot make any assumptions about bits not part of the
-    encoding of the type. Especially, do not assume them to be zero.
-    To be safe, always clear the data properly before you use it
-    in a context where this is important:
+.. 提示::
+    如果您访问类型少于 256 位的变量
+    (例如 ``uint64``, ``address``, 或 ``bytes16``),
+    你是不能对不属于类型编码的位做出任何设想的。特别是，不要假设它们为零.
+    为了安全起见，在重要的上下文中使用数据之前，请始终正确清除数据:
     ``uint32 x = f(); assembly { x := and(x, 0xffffffff) /* now use x */ }``
-    To clean signed types, you can use the ``signextend`` opcode:
+    要清理有符号类型，你可以使用 ``signextend`` 操作码:
     ``assembly { signextend(<num_bytes_of_x_minus_one>, x) }``
 
 
-Since Solidity 0.6.0, the name of a inline assembly variable may not
-shadow any declaration visible in the scope of the inline assembly block
-(including variable, contract and function declarations).
+从Solidity 0.6.0开始，内联程序集变量的名称不能覆盖内联程序集块范围内的任何可见声明
+(包括变量、合约和函数声明 ).
 
-Since Solidity 0.7.0, variables and functions declared inside the
-inline assembly block may not contain ``.``, but using ``.`` is
-valid to access Solidity variables from outside the inline assembly block.
+从Solidity 0.7.0开始，在内联程序集块中声明的变量和函数可能不包含 ``.``,
+但从内联汇编程序块外访问使用``.``访问Solidity变量是可行的；
 
-Things to Avoid
+避免事项
 ---------------
 
-Inline assembly might have a quite high-level look, but it actually is extremely
-low-level. Function calls, loops, ifs and switches are converted by simple
-rewriting rules and after that, the only thing the assembler does for you is re-arranging
-functional-style opcodes, counting stack height for
-variable access and removing stack slots for assembly-local variables when the end
-of their block is reached.
+内联汇编可能具有相当高级别的外观, 但它实际上是非常低级别的语言。函数调用、循环、ifs 和switch操作通过简单的重写规则进行转换，然后，
+汇编器为你做的唯一一件事就是重新安排函数式操作码，计算变量访问的堆栈高度，并在到达块末尾时删除程序集局部变量的堆栈槽。
 
 .. _conventions-in-solidity:
 
-Conventions in Solidity
+Solidity 中的约定
 -----------------------
 
 .. _assembly-typed-variables:
 
-Values of Typed Variables
+类型变量的值
 =========================
 
-In contrast to EVM assembly, Solidity has types which are narrower than 256 bits,
-e.g. ``uint24``. For efficiency, most arithmetic operations ignore the fact that
-types can be shorter than 256
-bits, and the higher-order bits are cleaned when necessary,
-i.e., shortly before they are written to memory or before comparisons are performed.
-This means that if you access such a variable
-from within inline assembly, you might have to manually clean the higher-order bits
-first.
+与 EVM 汇编相比, Solidity 具有比 256 位更窄的类型,比如``uint24``。
+为了提高效率，大多数算术运算都忽略了类型可以短于 256 位的事实。 必要时清理高阶位,
+比如, 在将它们写入内存或进行比较前不久.
+这意味着如果您从内联汇编中访问这样的变量，您可能必须先手动清除高阶位.
 
 .. _assembly-memory-management:
 
-Memory Management
+内存管理
 =================
 
-Solidity manages memory in the following way. There is a "free memory pointer"
-at position ``0x40`` in memory. If you want to allocate memory, use the memory
-starting from where this pointer points at and update it.
-There is no guarantee that the memory has not been used before and thus
-you cannot assume that its contents are zero bytes.
-There is no built-in mechanism to release or free allocated memory.
-Here is an assembly snippet you can use for allocating memory that follows the process outlined above:
-
+Solidity 通过以下方式管理内存。在内存中的“0x40”位置有一个“空闲内存指针”。
+如果要分配内存，请使用从该指针指向的位置开始的内存并更新它。
+无法保证之前未使用过内存，因此您不能假定其内容为零字节。没有内置机制来释放分配的内存。
+这是一个程序集片段，可用于按照上述过程分配内存：
 .. code-block:: yul
 
     function allocate(length) -> pos {
@@ -263,38 +221,26 @@ Here is an assembly snippet you can use for allocating memory that follows the p
       mstore(0x40, add(pos, length))
     }
 
-The first 64 bytes of memory can be used as "scratch space" for short-term
-allocation. The 32 bytes after the free memory pointer (i.e., starting at ``0x60``)
-are meant to be zero permanently and is used as the initial value for
-empty dynamic memory arrays.
-This means that the allocatable memory starts at ``0x80``, which is the initial value
-of the free memory pointer.
 
-Elements in memory arrays in Solidity always occupy multiples of 32 bytes (this is
-even true for ``bytes1[]``, but not for ``bytes`` and ``string``). Multi-dimensional memory
-arrays are pointers to memory arrays. The length of a dynamic array is stored at the
-first slot of the array and followed by the array elements.
+内存的前 64 个字节可以用作短期分配的“暂存空间”。空闲内存指针后的 32 个字节（即从“0x60”开始）意味着永久为零，并用作空动态内存数组的初始值。
+这意味着可分配内存从 ``0x80`` 开始，这是空闲内存指针的初始值。
 
-.. warning::
-    Statically-sized memory arrays do not have a length field, but it might be added later
-    to allow better convertibility between statically and dynamically-sized arrays; so,
-    do not rely on this.
+Solidity 中内存数组中的元素总是占用 32 字节的倍数（对于 ``bytes1[]`` 也是如此，但对于 ``bytes`` 和 ``string`` 则不然）。
+多维内存数组是指向内存数组的指针。动态数组的长度存储在数组的第一个槽位，后面是数组元素。
 
-Memory Safety
+.. 提示::
+    静态大小的内存数组没有长度字段，但之后可能会添加它以允许静态和动态大小的数组之间更好的转换；所以，不要依赖这个。
+
+内存安全
 =============
 
-Without the use of inline assembly, the compiler can rely on memory to remain in a well-defined
-state at all times. This is especially relevant for :ref:`the new code generation pipeline via Yul IR <ir-breaking-changes>`:
-this code generation path can move local variables from stack to memory to avoid stack-too-deep errors and
-perform additional memory optimizations, if it can rely on certain assumptions about memory use.
+在不使用内联汇编的情况下，编译器可以依靠内存始终保持定义良好的状态。这与通过 Yul IR <ir-breaking-changes> 的新代码生成管道非常有关系：
+此代码生成路径可以将局部变量从堆栈移动到内存以避免堆栈太深错误并执行额外的内存优化，如果它可以依赖于关于内存使用的某些假设。
 
-While we recommend to always respect Solidity's memory model, inline assembly allows you to use memory
-in an incompatible way. Therefore, moving stack variables to memory and additional memory optimizations are,
-by default, globally disabled in the presence of any inline assembly block that contains a memory operation
-or assigns to Solidity variables in memory.
+虽然我们建议始终遵守 Solidity 的内存模型，但内联汇编允许您以不兼容的方式使用内存。
+因此，在存在任何包含内存操作或分配给内存中的 Solidity 变量的内联汇编块的情况下，默认情况下，将堆栈变量移动到内存和额外的内存优化是全局禁用的。
 
-However, you can specifically annotate an assembly block to indicate that it in fact respects Solidity's memory
-model as follows:
+但是，你可以专门注释一个汇编块，以表明它实际上遵循 Solidity 的内存模型，如下所示:
 
 .. code-block:: solidity
 
@@ -302,20 +248,17 @@ model as follows:
         ...
     }
 
-In particular, a memory-safe assembly block may only access the following memory ranges:
+特别是，内存安全的汇编块只能访问以下内存范围:
 
-- Memory allocated by yourself using a mechanism like the ``allocate`` function described above.
-- Memory allocated by Solidity, e.g. memory within the bounds of a memory array you reference.
-- The scratch space between memory offset 0 and 64 mentioned above.
-- Temporary memory that is located *after* the value of the free memory pointer at the beginning of the assembly block,
-  i.e. memory that is "allocated" at the free memory pointer without updating the free memory pointer.
+- 使用类似上述``allocate``函数的机制自行分配内存。
+- 由 Solidity 分配的内存，例如您引用的内存数组范围内的内存。
+- 上面提到的内存偏移量0和64之间的暂存空间。
+- 位于汇编块开头的空闲内存指针值之后的临时内存，即在空闲内存指针处“分配”的内存，而不更新空闲内存指针。
 
-Furthermore, if the assembly block assigns to Solidity variables in memory, you need to assure that accesses to
-the Solidity variables only access these memory ranges.
+此外，如果汇编块分配给了内存中的 Solidity 变量，则需要确保对 Solidity 变量的访问仅访问这些内存范围。
 
-Since this is mainly about the optimizer, these restrictions still need to be followed, even if the assembly block
-reverts or terminates. As an example, the following assembly snippet is not memory safe, because the value of
-``returndatasize()`` may exceed the 64 byte scratch space:
+因为这主要是关于优化器的，所以仍然需要遵守这些限制，即使汇编块恢复或终止。例如，以下程序集片段不是内存安全的，
+因为 ``returndatasize()`` 的值可能超过 64 字节的暂存空间:
 
 .. code-block:: solidity
 
@@ -324,8 +267,7 @@ reverts or terminates. As an example, the following assembly snippet is not memo
       revert(0, returndatasize())
     }
 
-On the other hand, the following code *is* memory safe, because memory beyond the location pointed to by the
-free memory pointer can safely be used as temporary scratch space:
+另一方面，以下代码是内存安全的，因为超出空闲内存指针指向的位置的内存可以安全地用作临时暂存空间:
 
 .. code-block:: solidity
 
@@ -335,19 +277,16 @@ free memory pointer can safely be used as temporary scratch space:
       revert(p, returndatasize())
     }
 
-Note that you do not need to update the free memory pointer if there is no following allocation,
-but you can only use memory starting from the current offset given by the free memory pointer.
+请注意，如果没有后续分配，则无需更新空闲内存指针，但只能使用从空闲内存指针给出的当前偏移量开始的内存。
 
-If the memory operations use a length of zero, it is also fine to just use any offset (not only if it falls into the scratch space):
-
+如果内存操作使用长度为零，也可以只使用任何偏移量（不仅是当它落入暂存空间时）：
 .. code-block:: solidity
 
     assembly ("memory-safe") {
       revert(0, 0)
     }
 
-Note that not only memory operations in inline assembly itself can be memory-unsafe, but also assignments to
-Solidity variables of reference type in memory. For example the following is not memory-safe:
+请注意，不仅内联汇编中的内存操作本身可能是内存不安全的，而且对内存中引用类型的 Solidity 变量的赋值也是如此。例如以下不是内存安全的:
 
 .. code-block:: solidity
 
@@ -357,16 +296,13 @@ Solidity variables of reference type in memory. For example the following is not
     }
     x[0x20] = 0x42;
 
-Inline assembly that neither involves any operations that access memory nor assigns to any Solidity variables
-in memory is automatically considered memory-safe and does not need to be annotated.
+既不涉及任何访问内存的操作也不分配给内存中的任何 Solidity 变量的内联汇编自动被认为是内存安全的并且不需要注释。
 
-.. warning::
-    It is your responsibility to make sure that the assembly actually satisfies the memory model. If you annotate
-    an assembly block as memory-safe, but violate one of the memory assumptions, this **will** lead to incorrect and
-    undefined behaviour that cannot easily be discovered by testing.
+.. 提示::
+    您有责任确保程序集确实满足内存模型。如果您将一个程序集块注释为内存安全的，
+    但违反了其中一个内存设定，这将导致不正确和未定义的行为，而这些行为无法通过测试轻易发现。
 
-In case you are developing a library that is meant to be compatible across multiple versions
-of Solidity, you can use a special comment to annotate an assembly block as memory-safe:
+    如果您正在开发一个旨在兼容多个版本的 Solidity 的库，您可以使用特殊注释将程序集块注释为内存安全的:
 
 .. code-block:: solidity
 
@@ -375,5 +311,4 @@ of Solidity, you can use a special comment to annotate an assembly block as memo
         ...
     }
 
-Note that we will disallow the annotation via comment in a future breaking release; so, if you are not concerned with
-backwards-compatibility with older compiler versions, prefer using the dialect string.
+请注意，我们将在未来的突破性版本中禁止通过评论进行注释；因此，如果您不关心与旧编译器版本的向后兼容性，则继续使用偏好的方言字符串。
