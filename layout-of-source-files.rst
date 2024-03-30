@@ -169,7 +169,7 @@ Solidity 支持的导入语句来模块化代码，其语法跟 JavaScript（从
 如果在“filename”中添加新的符号，则会自动添加出现在所有导入 “filename” 的文件中。 更好的方式是明确导入的具体
 符号。
 
-像下面这样，创建了新的 ``symbolName`` 全局符号，他的成员都来自与导入的 ``"filename"`` 文件中的全局符号，如：
+像下面这样，创建了新的 ``symbolName`` 全局符号，他的成员都来自于导入的 ``"filename"`` 文件中的全局符号，如：
 .. code-block:: solidity
 
   import * as symbolName from "filename";
